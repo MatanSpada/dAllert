@@ -106,7 +106,7 @@ void loop()
   i2c_stop();
   Serial.println(ack == true);
   Serial.println("delay");
-  delay(1000); 
+  delay(1000);  
 }
 
 
