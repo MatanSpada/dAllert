@@ -64,6 +64,8 @@ void loop()
 #define SCL                     (41)
 #define MPU6050_BASE_ADD        (0X68)
 #define WHO_AM_I_REG            (0x75)
+#define PWR_MGMT_1              (0x6B)
+#define PWR_MGMT_2              (0x6C)
 #define WRITE                   (0)
 #define READ                    (1)
 #define MPU6050_WRITE(address)  ((address << 1) | WRITE)
@@ -197,9 +199,59 @@ void setup()
   i2c_init();
 }
 
+void i2c_ack_check(bool ack, const char *msg)
+{
+  if (ack == false)
+  {
+    Serial.printf("no ack arrived. ERR: %s.\n", msg);
+    //while(1);
+  }
+}
+
+void mpu6050_reset()
+{
+  i2c_start();  
+
+  bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD)); // slave address + WRITE bit
+  i2c_ack_check(ack, "reset: write slave address");
+
+  ack = i2c_write_byte(PWR_MGMT_1);                         // register address ack);
+  i2c_ack_check(ack, "reset: write register");
+
+  ack = i2c_write_byte(0x80);                         // Reset;
+  i2c_ack_check(ack, "reset: write value");
+
+  i2c_stop();
+
+  delay(100);
+}
+
+void mpu6050_set_clock()
+{
+  i2c_start();
+
+  bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD));
+  i2c_ack_check(ack, "set_clock: write slave address");
+
+  ack = i2c_write_byte(PWR_MGMT_1);
+  i2c_ack_check(ack, "set clock: write register");
+
+  ack = i2c_write_byte(0x01); // Set PLL with X gyro
+  i2c_ack_check(ack, "set clock: write valuer");
+
+  i2c_stop();
+}
+
 void loop()
 {
-  delay(1000);  
+  mpu6050_reset();
+
+
+ /*  
+ WHO_AM_I
+**********
+
+ delay(1000);  
 
   i2c_start();                                                // start condition
 
@@ -231,7 +283,8 @@ void loop()
   Serial.printf("value: 0x%02X\n", value);
   Serial.println("delay");
 
-  delay(1000);  
+  delay(1000);  */
+
 }
 
 
