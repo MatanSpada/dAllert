@@ -69,7 +69,10 @@ void loop()
 #define WRITE                   (0)
 #define READ                    (1)
 #define MPU6050_WRITE(address)  ((address << 1) | WRITE)
-#define MPU6050_READ(address)   ((address << 1) | READ)        
+#define MPU6050_READ(address)   ((address << 1) | READ)    
+#define ENABLE                  (1)
+#define DISABLE                 (0)    
+
 
 void i2c_delay() {
   delayMicroseconds(20); 
@@ -190,15 +193,6 @@ void i2c_stop()
   i2c_delay();
 }
 
-void setup()
-{
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println("Hello from LOLIN S3!");
-
-  i2c_init();
-}
-
 void i2c_ack_check(bool ack, const char *msg)
 {
   if (ack == false)
@@ -237,14 +231,89 @@ void mpu6050_set_clock()
   i2c_ack_check(ack, "set clock: write register");
 
   ack = i2c_write_byte(0x01); // Set PLL with X gyro
-  i2c_ack_check(ack, "set clock: write valuer");
+  i2c_ack_check(ack, "set clock: write value");
+
+  i2c_stop();
+
+  delay(100);
+}
+
+void mpu6050_sleep_mode(uint8_t state) // enable = 1, disable = 0
+{
+  uint8_t reg_value = 0;
+
+  i2c_start();
+
+  // read current register state
+  bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD));
+  i2c_ack_check(ack, "sleep_mode: write slave address");
+
+  ack = i2c_write_byte(PWR_MGMT_1);
+  i2c_ack_check(ack, "sleep_mode: write register");
+
+  i2c_start();
+  ack = i2c_write_byte(MPU6050_READ(MPU6050_BASE_ADD)); // read
+  i2c_ack_check(ack, "read for sleep: read slave address");
+  reg_value = i2c_read_byte();
+  i2c_stop();
+
+  if(state == ENABLE)
+  {
+    reg_value |= (1 << 6); // enable
+  }
+  else // disable
+  {
+    reg_value &= ~(1 << 6);
+  }
+
+  // update register state
+  i2c_start();
+
+  ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD));
+  i2c_ack_check(ack, "write for sleep: write slave address");
+
+  ack = i2c_write_byte(PWR_MGMT_1);
+  i2c_ack_check(ack, "write for sleep: write register");
+
+  ack = i2c_write_byte(reg_value);
+  i2c_ack_check(ack, "write for sleep: write new value");
 
   i2c_stop();
 }
 
+void mpu6050_enable_axes()
+{
+  i2c_start();
+
+  bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD));
+  i2c_ack_check(ack, "enable_axes: write slave address");
+
+  ack = i2c_write_byte(PWR_MGMT_2); // PWR_MGMT_2
+  i2c_ack_check(ack, "enable_axes: write register");
+
+  ack = i2c_write_byte(0x00); // enable all axes gyro and accel
+  i2c_ack_check(ack, "enable_axes: write value");
+
+  i2c_stop();
+}
+
+
+void setup()
+{
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("Hello from LOLIN S3!");
+
+  i2c_init();
+  mpu6050_reset();
+  mpu6050_set_clock();
+  mpu6050_sleep_mode(DISABLE);
+  mpu6050_enable_axes();
+}
+
 void loop()
 {
-  mpu6050_reset();
+
 
 
  /*  
