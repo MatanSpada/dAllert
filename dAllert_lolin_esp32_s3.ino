@@ -1,77 +1,34 @@
-/*
-
-// Who AM I - using Wire lib:
-
-#include <Wire.h>
-
-#define MPU6050_ADDR     0x68
-#define WHO_AM_I_REG     0x75
-
-void setup()
-{
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println("🔍 Starting I2C scan and WHO_AM_I check...");
-
-  // אתחול I2C עם פינים מותאמים (ל-ESP32 S3)
-  Wire.begin(42, 41); // SDA, SCL
-
-  // סריקה כדי לוודא שהרכיב מחובר
-  Serial.println("Scanning for I2C devices...");
-  for (uint8_t addr = 1; addr < 127; addr++)
-  {
-    Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0)
-    {
-      Serial.print("Found device at 0x");
-      Serial.println(addr, HEX);
-    }
-    delay(5);
-  }
-
-  // קריאה מהרגיסטר WHO_AM_I
-  Wire.beginTransmission(MPU6050_ADDR);
-  Wire.write(WHO_AM_I_REG);
-  Wire.endTransmission(false); // repeated start
-  Wire.requestFrom(MPU6050_ADDR, 1);
-
-  if (Wire.available())
-  {
-    uint8_t value = Wire.read();
-    Serial.printf("✅ WHO_AM_I = 0x%02X\n", value);
-  }
-  else
-  {
-    Serial.println("❌ Failed to read WHO_AM_I.");
-  }
-}
-
-void loop()
-{
-  // לא עושה כלום בלופ
-}*/
-
-
-
-
-
-
-
-
-// my code
-
 #define SDA                     (42)
 #define SCL                     (41)
 #define MPU6050_BASE_ADD        (0X68)
 #define WHO_AM_I_REG            (0x75)
 #define PWR_MGMT_1              (0x6B)
 #define PWR_MGMT_2              (0x6C)
+#define GYRO_CONFIG             (0x1B)
 #define WRITE                   (0)
 #define READ                    (1)
 #define MPU6050_WRITE(address)  ((address << 1) | WRITE)
 #define MPU6050_READ(address)   ((address << 1) | READ)    
 #define ENABLE                  (1)
 #define DISABLE                 (0)    
+#define GYRO_XOUT_H             (0x43) // [15:8]
+#define GYRO_XOUT_L             (0x44) // [7:0]
+#define GYRO_YOUT_H             (0x45) // [15:8]
+#define GYRO_YOUT_L             (0x46) // [7:0]
+#define GYRO_ZOUT_H             (0x47) // [15:8]
+#define GYRO_ZOUT_L             (0x48) // [7:0]
+
+typedef enum 
+{
+  FS_SEL_0 = 0, // ±250 °/s
+  FS_SEL_1,     // ±500 °/s
+  FS_SEL_2,     // ±1000 °/s
+  FS_SEL_3      // ±2000 °/s
+} FS_SEL_VALUE;
+
+FS_SEL_VALUE g_fs_sel_value = FS_SEL_0;
+
+float sensitivity_table[4] = {131, 65.5, 32.8, 16.4};
 
 
 void i2c_delay() {
@@ -242,9 +199,9 @@ void mpu6050_sleep_mode(uint8_t state) // enable = 1, disable = 0
 {
   uint8_t reg_value = 0;
 
+  // read current register state
   i2c_start();
 
-  // read current register state
   bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD));
   i2c_ack_check(ack, "sleep_mode: write slave address");
 
@@ -298,6 +255,103 @@ void mpu6050_enable_axes()
 }
 
 
+void mpu6050_set_gyro_range()
+{
+  uint8_t range_value = 0;
+  uint8_t reg_value = 0;
+
+  switch (g_fs_sel_value)
+  {
+    case 0: range_value = 0x00; break; 
+    case 1: range_value = 0x08; break; 
+    case 2: range_value = 0x10; break; 
+    case 3: range_value = 0x18; break; 
+    default: return;
+  }
+
+
+  // read current register state
+  i2c_start();
+
+  bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD));
+  i2c_ack_check(ack, "set_gyro_range: write slave address");
+
+  ack = i2c_write_byte(GYRO_CONFIG); // GYRO_CONFIG REG
+  i2c_ack_check(ack, "set_gyro_range: write register");
+
+  i2c_start();
+  ack = i2c_write_byte(MPU6050_READ(MPU6050_BASE_ADD)); // read
+  i2c_ack_check(ack, "set_gyro_range: read slave address");
+  reg_value = i2c_read_byte();
+
+  i2c_stop();
+
+  // update only bits 4:3 (FS_SEL)
+  reg_value &= ~(0x18);         // clear bits 4 and 3
+  reg_value |= range_value;     // set new FS_SEL value
+
+  // write back updated register value
+  i2c_start();
+  ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD));
+  i2c_ack_check(ack, "gyro_range: write slave address");
+
+  ack = i2c_write_byte(GYRO_CONFIG); // GYRO_CONFIG REG
+  i2c_ack_check(ack, "gyro_range: write register");
+
+  ack = i2c_write_byte(reg_value);
+  i2c_ack_check(ack, "gyro_range: write value");
+
+  i2c_stop();
+}
+
+void mpu6050_read_gyro()
+{
+  float sensitivity = 0;
+  uint8_t axes_value[6] = { 0 };
+  int16_t gyro_x_raw = 0;
+  int16_t gyro_y_raw = 0;
+  int16_t gyro_z_raw = 0;
+  float gyro_x = 0;
+  float gyro_y = 0;
+  float gyro_z = 0;
+
+  
+
+  i2c_start();
+  
+  bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD));
+  i2c_ack_check(ack, "read_gyro: write slave address");
+
+  ack = i2c_write_byte(GYRO_XOUT_H);
+  i2c_ack_check(ack, "read_gyro: write register");
+
+  i2c_start();
+  ack = i2c_write_byte(MPU6050_READ(MPU6050_BASE_ADD)); // read command in packet
+  i2c_ack_check(ack, "read_gyro: read register");
+
+  for(int i = 0; i < 6; ++i)
+  {
+    axes_value[i] = i2c_read_byte(); 
+  }
+
+  sensitivity = sensitivity_table[g_fs_sel_value];
+
+  gyro_x_raw = (int16_t)((axes_value[0] << 8) | axes_value[1]); // (int16_t) is essential due to Integer Promotion behavior:
+  gyro_y_raw = (int16_t)((axes_value[2] << 8) | axes_value[3]); // the result of (uint8_t << 8) is promoted to int (or unsigned int), 
+  gyro_z_raw = (int16_t)((axes_value[4] << 8) | axes_value[5]); // which may misinterpret the sign bit if not explicitly cast.
+  
+  gyro_x = (gyro_x_raw / sensitivity); 
+  gyro_y = (gyro_y_raw / sensitivity);
+  gyro_z = (gyro_z_raw / sensitivity);
+
+  Serial.printf("Gyro X: %.2f °/s\n", gyro_x);
+  Serial.printf("Gyro Y: %.2f °/s\n", gyro_y);
+  Serial.printf("Gyro Z: %.2f °/s\n", gyro_z);
+
+  i2c_stop();
+}
+
+
 void setup()
 {
   Serial.begin(115200);
@@ -313,95 +367,6 @@ void setup()
 
 void loop()
 {
-
-
-
- /*  
- WHO_AM_I
-**********
-
- delay(1000);  
-
-  i2c_start();                                                // start condition
-
-  bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD)); // slave address + WRITE bit
-  Serial.printf("ACK1=%d  (ADDR)\n", ack);
-  if (ack == false)
-  {
-    Serial.println("no ack arrived. ERR 1.");
-  }
-
-  ack = i2c_write_byte(WHO_AM_I_REG);                         // register address
-  Serial.printf("ACK2=%d  (WHO_AM_I)\n", ack);
-  if (ack == false)
-  {
-    Serial.println("no ack arrived. ERR 2.");
-  }
-
-  i2c_start();                                                // Repeated Start condition
-  ack = i2c_write_byte(MPU6050_READ(MPU6050_BASE_ADD));       // slave address + READ bit
-  Serial.printf("ACK3=%d  (READ)\n", ack);
-  if (ack == false)
-  {
-    Serial.println("no ack arrived. ERR 3.");
-  }
-
-  uint8_t value = i2c_read_byte();                            // Read 1 byte
-  i2c_stop();
-
-  Serial.printf("value: 0x%02X\n", value);
-  Serial.println("delay");
-
-  delay(1000);  */
-
+  mpu6050_read_gyro();
+  delay(1000);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-// #include <Wire.h>
-
-// void setup()
-// {
-//   Serial.begin(115200);
-//   delay(1000);
-
-
-//   Wire.begin(42, 41);  
-
-//   Serial.println("🔍 I2C Scanner");
-
-//   for (uint8_t address = 1; address < 127; address++)
-//   {
-//     Wire.beginTransmission(address);
-//     if (Wire.endTransmission() == 0)
-//     {
-//       Serial.print("Found device at 0x");
-//       Serial.println(address, HEX);
-//     }
-//     delay(10);
-//   }
-
-//   Serial.println("****Scan complete.");
-// }
-
-// void loop()
-// {
-  
-// }
-
-
-
-
-
-
-
