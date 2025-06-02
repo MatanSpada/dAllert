@@ -27,8 +27,15 @@ typedef enum
 } FS_SEL_VALUE;
 
 FS_SEL_VALUE g_fs_sel_value = FS_SEL_0;
-
 float sensitivity_table[4] = {131, 65.5, 32.8, 16.4};
+
+bool is_calibration_g = false;
+float gyro_bias_x_g = 0;
+float gyro_bias_y_g = 0;
+float gyro_bias_z_g = 0;
+float gyro_x_g = 0;
+float gyro_y_g = 0;
+float gyro_z_g = 0;
 
 
 void i2c_delay() {
@@ -102,7 +109,7 @@ bool i2c_write_byte(uint8_t byte)
   return i2c_read_ack();
 }
 
-uint8_t i2c_read_byte()
+uint8_t i2c_read_byte(bool send_ack)
 {
   uint8_t value = 0;
   pinMode(SDA, INPUT_PULLUP);
@@ -125,8 +132,7 @@ uint8_t i2c_read_byte()
   // Send NACK
   digitalWrite(SCL, LOW);
   pinMode(SDA, OUTPUT);
-  digitalWrite(SDA, HIGH);
-  i2c_delay();
+  digitalWrite(SDA, send_ack != 0 ? LOW : HIGH);   // ACK=0, NACK=1  i2c_delay();
 
   digitalWrite(SCL, HIGH);
   i2c_delay();
@@ -164,13 +170,13 @@ void mpu6050_reset()
   i2c_start();  
 
   bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD)); // slave address + WRITE bit
-  i2c_ack_check(ack, "reset: write slave address");
+  //i2c_ack_check(ack, "reset: write slave address");
 
   ack = i2c_write_byte(PWR_MGMT_1);                         // register address ack);
-  i2c_ack_check(ack, "reset: write register");
+  //i2c_ack_check(ack, "reset: write register");
 
   ack = i2c_write_byte(0x80);                         // Reset;
-  i2c_ack_check(ack, "reset: write value");
+  //i2c_ack_check(ack, "reset: write value");
 
   i2c_stop();
 
@@ -211,7 +217,7 @@ void mpu6050_sleep_mode(uint8_t state) // enable = 1, disable = 0
   i2c_start();
   ack = i2c_write_byte(MPU6050_READ(MPU6050_BASE_ADD)); // read
   i2c_ack_check(ack, "read for sleep: read slave address");
-  reg_value = i2c_read_byte();
+  reg_value = i2c_read_byte(0);
   i2c_stop();
 
   if(state == ENABLE)
@@ -282,7 +288,7 @@ void mpu6050_set_gyro_range()
   i2c_start();
   ack = i2c_write_byte(MPU6050_READ(MPU6050_BASE_ADD)); // read
   i2c_ack_check(ack, "set_gyro_range: read slave address");
-  reg_value = i2c_read_byte();
+  reg_value = i2c_read_byte(0);
 
   i2c_stop();
 
@@ -311,11 +317,6 @@ void mpu6050_read_gyro()
   int16_t gyro_x_raw = 0;
   int16_t gyro_y_raw = 0;
   int16_t gyro_z_raw = 0;
-  float gyro_x = 0;
-  float gyro_y = 0;
-  float gyro_z = 0;
-
-  
 
   i2c_start();
   
@@ -331,7 +332,7 @@ void mpu6050_read_gyro()
 
   for(int i = 0; i < 6; ++i)
   {
-    axes_value[i] = i2c_read_byte(); 
+    axes_value[i] = i2c_read_byte(i < 5); // ACK to 0-4, NACK to 5
   }
 
   sensitivity = sensitivity_table[g_fs_sel_value];
@@ -340,15 +341,49 @@ void mpu6050_read_gyro()
   gyro_y_raw = (int16_t)((axes_value[2] << 8) | axes_value[3]); // the result of (uint8_t << 8) is promoted to int (or unsigned int), 
   gyro_z_raw = (int16_t)((axes_value[4] << 8) | axes_value[5]); // which may misinterpret the sign bit if not explicitly cast.
   
-  gyro_x = (gyro_x_raw / sensitivity); 
-  gyro_y = (gyro_y_raw / sensitivity);
-  gyro_z = (gyro_z_raw / sensitivity);
+  if(is_calibration_g == true)
+  {
+    gyro_x_g = (gyro_x_raw / sensitivity); 
+    gyro_y_g = (gyro_y_raw / sensitivity);
+    gyro_z_g = (gyro_z_raw / sensitivity);
+  }
+  else
+  {
+    gyro_x_g = (gyro_x_raw / sensitivity) - gyro_bias_x_g; 
+    gyro_y_g = (gyro_y_raw / sensitivity) - gyro_bias_y_g;
+    gyro_z_g = (gyro_z_raw / sensitivity) - gyro_bias_z_g;    
 
-  Serial.printf("Gyro X: %.2f °/s\n", gyro_x);
-  Serial.printf("Gyro Y: %.2f °/s\n", gyro_y);
-  Serial.printf("Gyro Z: %.2f °/s\n", gyro_z);
+    Serial.printf("Gyro X: %.2f °/s\n", gyro_x_g);
+    Serial.printf("Gyro Y: %.2f °/s\n", gyro_y_g);
+    Serial.printf("Gyro Z: %.2f °/s\n", gyro_z_g);
+  }
+
 
   i2c_stop();
+}
+
+
+void mpu6050_calibrate_gyro()
+{
+  const int num_samples = 1000;
+
+  Serial.printf("Gyro is calibrating and will start automatically...");
+  is_calibration_g = true;
+  
+  for(int i = 0; i < num_samples; ++i)
+  {
+    mpu6050_read_gyro();
+    gyro_bias_x_g += gyro_x_g;
+    gyro_bias_y_g += gyro_y_g;
+    gyro_bias_z_g += gyro_z_g;
+    delay(10);
+  }
+
+  is_calibration_g = false;
+
+  gyro_bias_x_g = gyro_bias_x_g / num_samples;
+  gyro_bias_y_g = gyro_bias_y_g / num_samples;
+  gyro_bias_z_g = gyro_bias_z_g / num_samples;
 }
 
 
@@ -359,14 +394,18 @@ void setup()
   Serial.println("Hello from LOLIN S3!");
 
   i2c_init();
+  delay(500);
   mpu6050_reset();
   mpu6050_set_clock();
   mpu6050_sleep_mode(DISABLE);
   mpu6050_enable_axes();
+  mpu6050_set_gyro_range();
+  delay(1000);
+  mpu6050_calibrate_gyro();
 }
 
 void loop()
 {
   mpu6050_read_gyro();
-  delay(1000);
+  delay(500);
 }
