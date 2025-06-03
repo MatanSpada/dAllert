@@ -169,13 +169,13 @@ void mpu6050_reset()
 {
   i2c_start();  
 
-  bool ack = i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD)); // slave address + WRITE bit
+  /*bool ack = */i2c_write_byte(MPU6050_WRITE(MPU6050_BASE_ADD)); // slave address + WRITE bit
   //i2c_ack_check(ack, "reset: write slave address");
 
-  ack = i2c_write_byte(PWR_MGMT_1);                         // register address ack);
+  /*ack = */i2c_write_byte(PWR_MGMT_1);                         // register address ack);
   //i2c_ack_check(ack, "reset: write register");
 
-  ack = i2c_write_byte(0x80);                         // Reset;
+  /*ack = */i2c_write_byte(0x80);                         // Reset;
   //i2c_ack_check(ack, "reset: write value");
 
   i2c_stop();
@@ -353,9 +353,9 @@ void mpu6050_read_gyro()
     gyro_y_g = (gyro_y_raw / sensitivity) - gyro_bias_y_g;
     gyro_z_g = (gyro_z_raw / sensitivity) - gyro_bias_z_g;    
 
-    Serial.printf("Gyro X: %.2f °/s\n", gyro_x_g);
-    Serial.printf("Gyro Y: %.2f °/s\n", gyro_y_g);
-    Serial.printf("Gyro Z: %.2f °/s\n", gyro_z_g);
+    // Serial.printf("Gyro X: %.2f °/s\n", gyro_x_g);
+    // Serial.printf("Gyro Y: %.2f °/s\n", gyro_y_g);
+    // Serial.printf("Gyro Z: %.2f °/s\n", gyro_z_g);
   }
 
 
@@ -367,7 +367,7 @@ void mpu6050_calibrate_gyro()
 {
   const int num_samples = 1000;
 
-  Serial.printf("Gyro is calibrating and will start automatically...");
+  Serial.println("Gyro is calibrating and will start automatically...");
   is_calibration_g = true;
   
   for(int i = 0; i < num_samples; ++i)
@@ -379,6 +379,7 @@ void mpu6050_calibrate_gyro()
     delay(10);
   }
 
+  Serial.println("Done calibrating.");
   is_calibration_g = false;
 
   gyro_bias_x_g = gyro_bias_x_g / num_samples;
@@ -407,5 +408,21 @@ void setup()
 void loop()
 {
   mpu6050_read_gyro();
+
+  if(abs(gyro_x_g) > 10)
+  {
+    Serial.println("xxxxxxxxxxxxxxxxxxxxxxxx");
+  }
+  if(abs(gyro_y_g) > 10)
+  {
+    Serial.println("yyyyyyyyyyyyyyyyyyyyyyyy");
+  }
+  if(abs(gyro_z_g) > 10)
+  {
+    Serial.println("zzzzzzzzzzzzzzzzzzzzzzz");
+  }    
   delay(500);
 }
+
+
+
