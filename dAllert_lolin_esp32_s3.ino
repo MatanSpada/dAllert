@@ -1,3 +1,8 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <Preferences.h>
+
+
 #define SDA                     (42)
 #define SCL                     (41)
 #define MPU6050_BASE_ADD        (0X68)
@@ -36,6 +41,77 @@ float gyro_bias_z_g = 0;
 float gyro_x_g = 0;
 float gyro_y_g = 0;
 float gyro_z_g = 0;
+
+Preferences preferences;
+const char* telBotToken = "8084151876:AAHquYPcwWSh195GL-Rq5Vu6jjEgLMBBHec";
+const char* chatId = "684325257"; 
+
+void sendTelegramMessage(const String& message)
+{
+  if(WiFi.status() == WL_CONNECTED)
+  {
+    HTTPClient http;
+    String url = "https://api.telegram.org/bot";
+    url += telBotToken;
+    url += "/sendMessage?chat_id=";
+    url += chatId;
+    url += "&text=";
+    url += message;
+
+    http.begin(url);
+    int httpResponseCode = http.GET();
+    http.end();
+
+    if (httpResponseCode > 0)
+      Serial.println("Message sent");
+    else
+      Serial.printf("Error sending message: %d\n", httpResponseCode);
+  }
+  else
+  {
+    Serial.println("WiFi not connected");
+  }
+}
+
+void connectToWiFi()
+{
+  String ssid, password;
+
+  preferences.begin("wifi", false);
+
+  if (!preferences.isKey("ssid"))
+  {
+    preferences.putString("ssid", "spada");
+    preferences.putString("password", "75395128ms");
+    Serial.println("WiFi credentials saved to NVS.");
+  }
+
+  ssid = preferences.getString("ssid", "");
+  password = preferences.getString("password", "");
+
+  Serial.printf("Connecting to %s...\n", ssid.c_str());
+  WiFi.begin(ssid.c_str(), password.c_str());
+
+  unsigned long wifiTimeout = 30000; // 30 seconds
+  unsigned long startTime = millis();
+
+  while ((WiFi.status() != WL_CONNECTED) && ((millis() - startTime) < wifiTimeout) )
+  {
+    delay(500);
+    Serial.print(".");
+  }
+
+  if (WiFi.status() != WL_CONNECTED) 
+  {
+    Serial.println("**************** Failed to connect to WiFi! **************** ");
+  }
+  else
+  {
+    Serial.printf("\nConnected! IP: %s\n", WiFi.localIP().toString().c_str());
+  }
+
+  preferences.end();
+}
 
 
 void i2c_delay() {
@@ -403,6 +479,8 @@ void setup()
   mpu6050_set_gyro_range();
   delay(1000);
   mpu6050_calibrate_gyro();
+
+  connectToWiFi();
 }
 
 void loop()
@@ -412,14 +490,17 @@ void loop()
   if(abs(gyro_x_g) > 10)
   {
     Serial.println("xxxxxxxxxxxxxxxxxxxxxxxx");
+    sendTelegramMessage("motion detected! axis x");
   }
   if(abs(gyro_y_g) > 10)
   {
     Serial.println("yyyyyyyyyyyyyyyyyyyyyyyy");
+    sendTelegramMessage("motion detected! axis y");
   }
   if(abs(gyro_z_g) > 10)
   {
     Serial.println("zzzzzzzzzzzzzzzzzzzzzzz");
+    sendTelegramMessage("motion detected! axis z");
   }    
   delay(500);
 }
