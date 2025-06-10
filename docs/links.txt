@@ -1,3 +1,0 @@
-https://github.com/wemos/docs/blob/master/docs/en/s3/s3.rst
-https://www.wemos.cc/en/latest/s3/s3.html?spm=a2g0o.detail.1000023.1.4a28wNn6wNn6xn
-https://www.electronicwings.com/sensors-modules/mpu6050-gyroscope-accelerometer-temperature-sensor-module
