@@ -3,14 +3,15 @@
 #include <Preferences.h>
 #include "i2c.h"
 #include "mpu6050.h"
+#include "secrets.h"
 
 #define SDA                     (42)
 #define SCL                     (41)
 #define DISABLE                 (0)  
 
 Preferences preferences;
-const char* telBotToken = "8084151876:AAHquYPcwWSh195GL-Rq5Vu6jjEgLMBBHec";
-const char* chatId = "684325257"; 
+const char* telBotToken = TELEGRAM_TOKEN;
+const char* chatId = TELEGRAM_CHAT_ID; 
 
 void sendTelegramMessage(const String& message)
 {
@@ -47,8 +48,8 @@ void connectToWiFi()
 
   if (!preferences.isKey("ssid"))
   {
-    preferences.putString("ssid", "spada");
-    preferences.putString("password", "75395128ms");
+    preferences.putString("ssid", WIFI_SSID);
+    preferences.putString("password", WIFI_PASS);
     Serial.println("WiFi credentials saved to NVS.");
   }
 

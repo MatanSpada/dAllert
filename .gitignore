@@ -1,0 +1,22 @@
+# Arduino build files
+*.ino.cpp
+*.o
+*.d
+*.a
+*.elf
+*.hex
+*.bin
+
+# Secrets
+secrets.h
+
+# Backup and editor files
+*.bak
+*.swp
+
+# Python cache (if any scripts added)
+__pycache__/
+
+# Docs folder
+docs/
+
